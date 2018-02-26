@@ -1,0 +1,36 @@
+if SERVER then
+    local quest = Quest.CreateQuest("some_quest","Random quest","This is an example quest",
+        function(ply)
+            -- Stuff to run on quest start
+        end,
+        function(ply)
+            -- Stuff to run on quest end
+        end)
+
+    Quest.AddTask(quest,"Kill that guy!","Go and see a person called Python1320 and kill him!",
+        function(ply)
+            -- this is the check that determines if the task is completed
+            return not Python:Alive()
+        end,
+        function(ply)
+            -- stuff to be ran on start of the task
+        end,
+        function(ply)
+            -- stuff to be ran on end of the task
+        end)
+
+    Quest.AddTask(quest,"Find this","Go and find me a manga book!",
+        function(ply)
+            -- this is the check that determines if the task is completed
+            return not Python:Alive()
+        end,
+        function(ply)
+            -- stuff to be ran on start of the task
+        end,
+        function(ply)
+            -- stuff to be ran on end of the task
+        end)
+end
+
+if CLIENT then
+end
