@@ -44,7 +44,7 @@ if CLIENT then
         local strlen   = string.len(str)
         local strstart = 1
         local strend   = 1
-        
+
         while (strend < strlen) do
             strend = strend + 1
             local width,_ = surface.GetTextSize(string.sub(str,strstart,strend))
@@ -165,11 +165,11 @@ if CLIENT then
         end
     end
 
-    local blockedlelements =
+    local blockeds =
     {
-        CHudAmmo = true,
-        CHudBattery = true,
-        CHudHealth = true,
+        ["CHudHealth"] = true,
+	    ["CHudBattery"] = true,
+        ["CHudAmmo"] = true,
     }
     --[[
         Called on each call of HUDShouldDraw hook
@@ -177,7 +177,7 @@ if CLIENT then
         Returns false if internal conditions are met
     ]]--
     local OnShouldDraw = function(element)
-        if Quest.CurrentDialog.Diplay and blockedlelements[element] then
+        if Quest.CurrentDialog.Display and blockeds[element] then
             return false
         end
     end
@@ -263,7 +263,7 @@ if SERVER then
 
         return quest
     end
-    
+
     --[[
     Add an entity to a quest so it can be used in tasks
         quest: The quest table to assign the entity to
@@ -292,7 +292,7 @@ if SERVER then
 
         return ent
     end
-    
+
     --[[
     Spawns a quest entity according to the ent table passed
         ent: The quest entity table
@@ -300,79 +300,92 @@ if SERVER then
     ]]--
     Quest.SpawnEntity = function(ent)
         if IsValid(ent.Instance) then
+            ent.Instance.IsQuestEntity = false
             ent.Instance:Remove()
         end
 
         local inst = ents.Create(ent.Class)
         inst:SetModel(ent.Model)
         inst:SetPos(ent.SpawnPosition)
-        if ent.OnUse then
-            if ent.IsNPC then
-                local oldacceptinput = inst.AcceptInput
-                inst.AcceptInput = function(self,inp,activator,caller,data)
-                    if inp == "Use" then
-                        ent.Interacted[caller] = true
-                        local s,e = pcall(ent.OnUse,caller)
-                        if not s then
-                            Quest.Print("Entity[" .. ent.Name .. "] OnUse method generated error:\n" ..
-                                e .. "\n /!\\ This method is now faulted and wont be ran anymore /!\\")
-                            ent.OnUse = function() end
-                        end
-                    end
-                    if oldacceptinput ~= nil then
-                        oldacceptinput(self,inp,activator,caller,data)
-                    end
-                end
-            else
-                local olduse = inst.Use
-                inst.Use = function(self,activator,caller,usetype,value)
-                    ent.Interacted[caller] = true
-                    local s,e = pcall(ent.OnUse,caller)
-                    if not s then
-                        Quest.Print("Entity[" .. ent.Name .. "] OnUse method generated error:\n" ..
-                            e .. "\n /!\\ This method is now faulted and wont be ran anymore /!\\")
-                        ent.OnUse = function() end
-                    end
-                    if olduse ~= nil then
-                        olduse(self,activator,caller,usetype,value)
-                    end
-                end
-            end
-        end
-        if not ent.IsNPC then
-            local oldremove = inst.OnRemove
-            inst.OnRemove = function(self)
-                local qname = Quest.ActiveQuest.Name
-                timer.Simple(Quest.EntityRespawnDelay,function()
-                    if Quest.ActiveQuest.Name == qname then
-                        Quest.SpawnEntity(ent)
-                    end
-                end)
-                if oldremove ~= nil then
-                    oldremove(self)
-                end
-            end
-        else
-            local oldkilled = inst.OnKilled
-            inst.OnKilled = function(self,dmg)
-                ent.Killed[dmg:GetAttacker()] = true
-                local qname = Quest.ActiveQuest.Name
-                timer.Simple(Quest.EntityRespawnDelay,function()
-                    if Quest.ActiveQuest.Name == qname then
-                        Quest.SpawnEntity(ent)
-                    end
-                end)
-                if oldkilled ~= nil then
-                    oldkilled(self,dmg)
-                end
-            end
-        end
         inst:Spawn()
         inst.IsQuestEntity = true
+        inst.QuestEntityName = ent.Name
         ent.Instance = inst
 
         return inst
     end
+
+    --[[
+    Called on KeyPress hook
+        ply: The player pressing the key
+        ent: They key being pressed
+    Returns void
+    ]]--
+    local OnKeyPress = function(ply,key)
+        if key == IN_USE and ply == earu then
+            local tr = util.TraceLine({
+                start = ply:EyePos(),
+                endpos = ply:EyePos() + ply:EyeAngles():Forward() * 100,
+                filter = function(ent)
+                    if ent.IsQuestEntity then
+                        return true
+                    end
+                end
+            })
+
+            if tr.Entity:IsValid() then
+                local active = Quest.ActiveQuest
+                if active.Players[ply] then
+                    local qent = active.Entities[tr.Entity.QuestEntityName]
+                    local s,e = pcall(qent.OnUse,ply)
+                    if not s then
+                        Quest.Print("Entity[" .. qent.Name .. "] OnUse method generated error:\n" ..
+                            e .. "\n /!\\ This method is now faulted and wont be ran anymore /!\\")
+                        qent.OnUse = function() end
+                    end
+                    qent.Interacted[ply] = true
+                end
+            end
+        end
+    end
+
+    --[[
+    Called on EntityRemoved hook
+        ent: The ent being removed
+    Returns void
+    ]]--
+    local OnEntityRemoved = function(ent)
+        if ent.IsQuestEntity then
+            local qname = Quest.ActiveQuest.Name
+            local active = Quest.ActiveQuest
+            local qent = active.Entities[ent.QuestEntityName]
+            timer.Simple(Quest.EntityRespawnDelay,function()
+                if active.Name == qname then
+                    Quest.SpawnEntity(qent)
+                end
+            end)
+        end
+    end
+
+    --[[
+    Called OnNPCKilled hook
+        npc: The NPC being killed
+        attacker: The attacker
+        inflictor: The inflictor
+    Returns void
+    ]]--
+    local OnNPCKilled = function(npc,attacker,inflictor)
+        if not attacker:IsPlayer() then return end
+        local active = Quest.ActiveQuest
+        if npc.IsQuestEntity and active.Players[attacker] then
+            local qent = active.Entities[npc.QuestEntityName]
+            qent.Killed[attacker] = true
+        end
+    end
+
+    hook.Add("KeyPress",Tag,OnKeyPress)
+    hook.Add("EntityRemoved",Tag,OnEntityRemoved)
+    hook.Add("OnNPCKilled",Tag,OnNPCKilled)
 
     --[[
     Sets the passed quest as active quest
@@ -382,6 +395,7 @@ if SERVER then
     Quest.SetActiveQuest = function(quest)
         for _,ent in pairs(Quest.ActiveQuest.Entities) do
             if IsValid(ent) then
+                ent.IsQuestEntity = false
                 ent:Remove()
             end
         end
@@ -566,14 +580,9 @@ if SERVER then
     Returns void
     ]]--
     local OnDisconnect = function(ply)
-    end
-
-    --[[
-    Called when a player connects
-        ply: The player entity connecting
-    Returns void
-    ]]--
-    local OnConnect = function(ply)
+        if Quest.ActiveQuest.Players[ply] then
+            Quest.ActiveQuest.Players[ply] = nil
+        end
     end
 
     --[[
@@ -614,7 +623,9 @@ if SERVER then
         local spanwpoint = Vector (-14415.375976562, 457.50762939453, 13363.03125)
         local ent = ents.Create("lua_npc_quest")
         ent:SetPos(spanwpoint)
+        ent:SetAngles(Angle(0,-90,0))
         ent:Spawn()
+        --ent:StartActivity(ACT_IDLE)
     end
 
     hook.Add("PlayerDisconnected",Tag,OnDisconnect)
@@ -630,8 +641,10 @@ Returns void
 local OnInitialize = function()
     Quest.Load()
     if SERVER then
-        --local index = math.random(1,Quest.Count)
-        --Quest.ActiveQuest = Quest.Quests[index]
+        if Quest.Count > 0 then
+            local index = math.random(1,Quest.Count)
+            Quest.SetActiveQuest(Quest.Quests[index])
+        end
     end
 end
 

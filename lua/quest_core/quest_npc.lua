@@ -25,9 +25,6 @@ ENT.Initialize = function(self)
 		self:CapabilitiesAdd(bit.bor(CAP_USE,CAP_ANIMATEDFACE,CAP_TURN_HEAD))
 		self:AddEFlags(EFL_NO_DISSOLVE)
 		self:SetUseType(SIMPLE_USE)
-		timer.Simple(0,function()
-			self:StartActivity(ACT_IDLE)
-		end)
 	end
 end
 
@@ -45,12 +42,17 @@ if SERVER then
 		if Quest then
 			local quest = Quest.ActiveQuest
 			if event == "Use" then
-				local isblacklisted = quest.Blacklist[caller:SteamID()] ~= nil 
+				local isblacklisted = quest.Blacklist[caller:SteamID()] ~= nil
 				local isongoing = quest.Players[caller] ~= nil
-					and quest.Blacklist[caller:SteamID()] or false
 				local tasks = {}
-				for _,v in ipairs(quest.Tasks) do
-					table.insert(tasks, { Name = v.Description, IsFinished = v.Execute(caller) })
+				if not isblacklisted then
+					for k,v in ipairs(quest.Tasks) do
+						table.insert(tasks, {
+							Name = v.Description,
+							IsFinished = quest.Players[caller] and k < quest.Players[caller] or false,
+							OnGoing = quest.Players[caller] and k == quest.Players[caller] or false
+						})
+					end
 				end
 				net.Start("QuestOpenMenu")
 				net.WriteBool(isblacklisted)
@@ -160,10 +162,10 @@ if CLIENT then
 	ENT.Draw = function(self)
 		self:DrawModel()
 	end
-	
-	ENT.OnReceivedMenu = function(self,name,desc,tasks)
-		self.Panel = vgui.Create("QuestMainPanel")
-		self.Panel:Setup(self,name,desc,tasks)
+
+	ENT.DisplayMenu = function(self,name,desc,tasks,ongoing)
+		self.Menu = vgui.Create("QuestMainPanel")
+		self.Menu:Setup(self,name,desc,tasks,ongoing)
 	end
 
 	net.Receive("QuestOpenMenu",function()
@@ -178,13 +180,8 @@ if CLIENT then
 				Quest.ShowDialog({"Sorry folk. I have no other quests for you today!",
 				"Come back later!"})
 			else
-				if not ongoing then
-					if not IsValid(ent.Panel) then
-						ent:OnReceivedMenu(questname,questdesc,tasks)
-					end
-				else
-					Quest.ShowDialog({"Hey there, you are not even done with your current quest!",
-					"Come back later when you are done!"})
+				if not IsValid(ent.Menu) then
+					ent:DisplayMenu(questname,questdesc,tasks,ongoing)
 				end
 			end
 		end
