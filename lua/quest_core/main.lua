@@ -32,8 +32,10 @@ if CLIENT then
 
     Quest.CurrentDialog = {
         Components = {},
+        Authors = {},
         CurrentIndex = 1,
         CurrentChar = 1,
+        Next = 0,
         Display = false,
         OnFinish = function() end,
     }
@@ -120,27 +122,24 @@ if CLIENT then
                 signature is "void function()"
         Returns void
     ]]--
-    Quest.ShowDialog = function(components,onfinish)
-        if Quest.CurrentDialog.Display then
-            Quest.CurrentDialog.Components = table.Add(Quest.CurrentDialog.Components,components)
-            local oldfinish = Quest.CurrentDialog.OnFinish
-            Quest.CurrentDialog.OnFinish = function()
-                if oldfinish then
-                    oldfinish()
-                end
-                if onfinish then
-                    onfinish()
-                end
-            end
-        else
+    Quest.ShowDialog = function(components,authors,onfinish)
+        if not Quest.CurrentDialog.Display then
             Quest.CurrentDialog.Components = {}
             for _,str in pairs(components) do
                 local wrapped = WordWrap(str,width - textmargin*2)
                 table.insert(Quest.CurrentDialog.Components,wrapped)
             end
+            if type(authors) == "string" then
+                for i=1,#Quest.CurrentDialog.Components do
+                    table.insert(Quest.CurrentDialog.Authors,authors)
+                end
+            else
+                Quest.CurrentDialog.Authors = authors
+            end
             Quest.CurrentDialog.CurrentIndex = 1
             Quest.CurrentDialog.CurrentChar = 1
             Quest.CurrentDialog.Display = true
+            Quest.Next = CurTime() + 1
             Quest.CurrentDialog.OnFinish = onfinish
         end
     end
@@ -156,9 +155,10 @@ if CLIENT then
         if Quest.CurrentDialog.Display then
             if key == IN_ATTACK or key == IN_USE then
                 fix = fix + 1
-                if fix > 2 then
+                if fix > 2 and CurTime() > Quest.CurrentDialog.Next then
                     Quest.CurrentDialog.CurrentIndex = Quest.CurrentDialog.CurrentIndex + 1
                     Quest.CurrentDialog.CurrentChar = 1
+                    Quest.CurrentDialog.Next = CurTime() + 1
                     fix = 0
                 end
             end
@@ -207,6 +207,18 @@ if CLIENT then
                 end
             else
                 Quest.CurrentDialog.CurrentChar = Quest.CurrentDialog.CurrentChar + 1
+                local author = Quest.CurrentDialog.Authors[Quest.CurrentDialog.CurrentIndex]
+                if author then
+                    local ax,ay = surface.GetTextSize(author)
+                    local x,y = xpos + 30,ypos - 25
+                    local w,h = ax + 20,26
+                    surface.SetDrawColor(0,0,0,200)
+                    surface.DrawRect(x,y,w,h)
+                    surface.SetDrawColor(100,100,100,200)
+                    surface.DrawOutlinedRect(x,y,w,h)
+                    surface.SetTextPos(x + 10,y + 5)
+                    surface.DrawText(author)
+                end
                 for k,v in pairs(string.Explode("\n",string.sub(cur,1,Quest.CurrentDialog.CurrentChar))) do
                     local i = ypos + textmargin + ((k - 1) * 15)
                     surface.SetTextPos(xpos + textmargin, i)

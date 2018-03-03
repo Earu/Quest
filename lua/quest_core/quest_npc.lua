@@ -178,7 +178,7 @@ if CLIENT then
 		if Quest then
 			if blacklisted then
 				Quest.ShowDialog({"Sorry folk. I have no other quests for you today!",
-				"Come back later!"})
+				"Come back later!"},"Mysterious man")
 			else
 				if not IsValid(ent.Menu) then
 					ent:DisplayMenu(questname,questdesc,tasks,ongoing)
