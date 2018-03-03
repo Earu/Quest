@@ -129,9 +129,10 @@ if CLIENT then
                 local wrapped = WordWrap(str,width - textmargin*2)
                 table.insert(Quest.CurrentDialog.Components,wrapped)
             end
+            Quest.CurrentDialog.Authors = {}
             if type(authors) == "string" then
-                for i=1,#Quest.CurrentDialog.Components do
-                    table.insert(Quest.CurrentDialog.Authors,authors)
+                for k,_ in pairs(Quest.CurrentDialog.Components) do
+                    table.insert(Quest.CurrentDialog.Authors,k,authors)
                 end
             else
                 Quest.CurrentDialog.Authors = authors
@@ -207,7 +208,8 @@ if CLIENT then
                 end
             else
                 Quest.CurrentDialog.CurrentChar = Quest.CurrentDialog.CurrentChar + 1
-                local author = Quest.CurrentDialog.Authors[Quest.CurrentDialog.CurrentIndex]
+                local authors = Quest.CurrentDialog.Authors or {} --Dunno why but this can be nil
+                local author = authors[Quest.CurrentDialog.CurrentIndex]
                 if author then
                     local ax,ay = surface.GetTextSize(author)
                     local x,y = xpos + 30,ypos - 25
@@ -557,7 +559,7 @@ if SERVER then
             if not s then
                 Quest.Print("Quest[" .. quest.PrintName .. "] OnStart method generated error:\n" ..
                     e .. "\n /!\\ This method is now faulted and wont be ran anymore /!\\")
-                quest.OnFinish = function() end --No more errors here
+                quest.OnStart = function() end --No more errors here
             end
         end
     end

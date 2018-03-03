@@ -117,20 +117,8 @@ if SERVER then
 			timer.Remove(id)
 			if IsValid(v) and v:IsPlayer() then
 				if v:Alive() then
-					if v:IsValid() then
-						v:EmitSound("ambient/explosions/explode_2.wav")
-					end
-
-					local weapon = v:GetActiveWeapon()
-					weapon = IsValid(weapon) and weapon:GetClass() or nil
-					local info = DamageInfo()
-					info:SetInflictor(game.GetWorld())
-					info:SetAttacker(self:IsValid() and self or v:IsValid() and v or game.GetWorld())
-					info:SetDamage(v:Health())
-					if not self:IsValid() then
-						shoulddamage = true
-					end
-					v:TakeDamageInfo(info)
+					v:EmitSound("ambient/explosions/explode_2.wav")
+					v:Kill()
 
 					local ent = v:GetRagdollEntity()
 
