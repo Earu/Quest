@@ -9,7 +9,7 @@ Returns void
 Quest.Load = include("quest_core/loader.lua")
 Quest.Print = function(txt)
     local prefix = "[Quest] >> "
-    print(prefix .. txt)
+    MsgC(Color(0,100,200),prefix .. txt)
 end
 
 if CLIENT then
@@ -115,6 +115,16 @@ if CLIENT then
         return panel
     end
 
+    local tblequals = function(tbl1,tbl2)
+        for k,v in pairs(tbl1) do
+            if tbl2[k] ~= v then
+                return false
+            end
+        end
+
+        return true
+    end
+
     --[[
         Shows a RPGish dialog box on the localplayer screen
             components: A table of strings that compose the whole dialog
@@ -123,7 +133,27 @@ if CLIENT then
         Returns void
     ]]--
     Quest.ShowDialog = function(components,authors,onfinish)
-        if not Quest.CurrentDialog.Display then
+        if Quest.CurrentDialog.Display and not tblequals(components,Quest.CurrentDialog.Components) then
+            local inserteds = {}
+            Quest.CurrentDialog.Components = Quest.CurrentDialog.Components or {}
+            for _,str in pairs(components) do
+                local wrapped = WordWrap(str,width - textmargin*2)
+                local i = table.insert(Quest.CurrentDialog.Components,wrapped)
+                table.insert(inserteds,i)
+            end
+            Quest.CurrentDialog.Authors = Quest.CurrentDialog.Authors or {}
+            if type(authors) == "string" then
+                for _,v in pairs(inserteds) do
+                    Quest.CurrentDialog.Authors[v] = authors
+                end
+            else
+                local i = 1
+                for _,v in pairs(inserteds) do
+                    Quest.CurrentDialog.Authors[v] = authors[i]
+                    i = i + 1
+                end
+            end
+        else
             Quest.CurrentDialog.Components = {}
             for _,str in pairs(components) do
                 local wrapped = WordWrap(str,width - textmargin*2)
@@ -141,9 +171,20 @@ if CLIENT then
             Quest.CurrentDialog.CurrentChar = 1
             Quest.CurrentDialog.Display = true
             Quest.Next = CurTime() + 1
-            Quest.CurrentDialog.OnFinish = onfinish
         end
+        Quest.CurrentDialog.OnFinish = onfinish
     end
+
+    net.Receive("QUEST_DIALOG",function()
+        local comps = net.ReadTable()
+        local authors = net.ReadTable()
+        local i = net.ReadInt(32)
+        Quest.ShowDialog(comps,authors,function()
+            net.Start("QUEST_DIALOG")
+            net.WriteInt(i,32)
+            net.SendToServer()
+        end)
+    end)
 
     local fix = 0
     --[[
@@ -236,23 +277,17 @@ if CLIENT then
 end
 
 if SERVER then
+    local questctor = include("quest_core/server/quest.lua")
+
+    util.AddNetworkString("QUEST_DIALOG")
+
     Quest.Quests = {}
     Quest.Count = 0
     Quest.EntityRespawnDelay = 30
-    Quest.ActiveQuest = {
-        Name = "default",
-        PrintName = "Default",
-        Description = "The default quest",
-        OnStart = function() end,
-        OnFinish = function() end,
-        Tasks = {},
-        Entities = {},
-        Players = {},
-        Blacklist = {},
-    }
+    Quest.ActiveQuest = questctor()
 
     --[[
-    Creates a quest table and registers it
+    Creates a quest object and registers it
         name: The name of the quest
         printname: The name that will be used for this quest in UIs
         description: The quest description to be displayed in UIs
@@ -261,145 +296,49 @@ if SERVER then
     Returns a new quest table corresponding to arguments passed
     ]]--
     Quest.CreateQuest = function(name,printname,description,onstart,onfinish)
-        local quest = {
-            Name = name,
-            PrintName = printname,
-            Description = description,
-            OnStart = onstart,
-            OnFinish = onfinish,
-            Tasks = {},
-            Entities = {},
-            Players = {},
-            Blacklist = {},
-        }
+        local quest = questctor(name,printname,description,onstart,onfinish)
         Quest.Quests[name] = quest
         Quest.Count = Quest.Count + 1
 
         return quest
     end
 
-    --[[
-    Add an entity to a quest so it can be used in tasks
-        quest: The quest table to assign the entity to
-        name: String, The name of the entity
-        class: String, The class that the entity should have
-        model: String, The model that the entity should have
-        isnpc: Boolean, Is the entity a npc?
-        spawnpoint: Vector, The position at which the entity spawns
-        onuse: void function(Player ply), The function that will
-            be fired when a player press use on the entity
-    Returns the entity table created
-    ]]--
-    Quest.AddEntity = function(quest,name,class,model,isnpc,spawnpoint,onuse)
-        local ent = {
-            Name = name,
-            Class = class,
-            Model = model,
-            OnUse = onuse,
-            IsNPC = isnpc,
-            SpawnPosition = spawnpoint,
-            Instance = NULL,
-            Interacted = {},
-            Killed = {},
-        }
-        quest.Entities[name] = ent
-
-        return ent
-    end
-
-    --[[
-    Spawns a quest entity according to the ent table passed
-        ent: The quest entity table
-    Returns the newly created instance of the quest entity
-    ]]--
-    Quest.SpawnEntity = function(ent)
-        if IsValid(ent.Instance) then
-            ent.Instance.IsQuestEntity = false
-            ent.Instance:Remove()
-        end
-
-        local inst = ents.Create(ent.Class)
-        inst:SetModel(ent.Model)
-        inst:SetPos(ent.SpawnPosition)
-        inst:Spawn()
-        inst.IsQuestEntity = true
-        inst.QuestEntityName = ent.Name
-        ent.Instance = inst
-
-        return inst
-    end
-
-    --[[
-    Called on KeyPress hook
-        ply: The player pressing the key
-        ent: They key being pressed
-    Returns void
-    ]]--
-    local OnKeyPress = function(ply,key)
-        if key == IN_USE and ply == earu then
-            local tr = util.TraceLine({
-                start = ply:EyePos(),
-                endpos = ply:EyePos() + ply:EyeAngles():Forward() * 100,
-                filter = function(ent)
-                    if ent.IsQuestEntity then
-                        return true
-                    end
-                end
-            })
-
-            if tr.Entity:IsValid() then
-                local active = Quest.ActiveQuest
-                if active.Players[ply] then
-                    local qent = active.Entities[tr.Entity.QuestEntityName]
-                    local s,e = pcall(qent.OnUse,ply)
-                    if not s then
-                        Quest.Print("Entity[" .. qent.Name .. "] OnUse method generated error:\n" ..
-                            e .. "\n /!\\ This method is now faulted and wont be ran anymore /!\\")
-                        qent.OnUse = function() end
-                    end
-                    qent.Interacted[ply] = true
-                end
+    local receivers = {}
+    local rcallbacks = {}
+    Quest.ShowDialog = function(ply,components,authors,onfinish)
+        net.Start("QUEST_DIALOG")
+        net.WriteTable(components)
+        authors = authors or {}
+        if type(authors) == "string" then
+            local t = {}
+            for k,_ in pairs(components) do
+                t[k] = authors
             end
+            net.WriteTable(t)
+        else
+            net.WriteTable(authors)
         end
+
+        onfinish = onfinish or function() end
+        if rcallbacks[onfinish] then
+            net.WriteInt(rcallbacks[onfinish],32)
+        else
+            local i = table.insert(receivers,onfinish)
+            rcallbacks[onfinish] = i
+            net.WriteInt(i,32)
+        end
+        net.Send(ply)
     end
 
-    --[[
-    Called on EntityRemoved hook
-        ent: The ent being removed
-    Returns void
-    ]]--
-    local OnEntityRemoved = function(ent)
-        if ent.IsQuestEntity then
-            local qname = Quest.ActiveQuest.Name
-            local active = Quest.ActiveQuest
-            local qent = active.Entities[ent.QuestEntityName]
-            timer.Simple(Quest.EntityRespawnDelay,function()
-                if active.Name == qname then
-                    Quest.SpawnEntity(qent)
-                end
-            end)
+    net.Receive("QUEST_DIALOG",function(_,ply)
+        local i = net.ReadInt(32)
+        local s,e = pcall(receivers[i],ply)
+        if not s then
+            Quest.Print("Dialog[" .. i .."] OnFinish method generated error:\n" ..
+                e .. "\n /!\\ This method is now faulted and wont be ran anymore /!\\")
+            receivers[i] = function() end
         end
-    end
-
-    --[[
-    Called OnNPCKilled hook
-        npc: The NPC being killed
-        attacker: The attacker
-        inflictor: The inflictor
-    Returns void
-    ]]--
-    local OnNPCKilled = function(npc,attacker,inflictor)
-        if not attacker:IsPlayer() then return end
-        local active = Quest.ActiveQuest
-        if npc.IsQuestEntity and active.Players[attacker] then
-            local qent = active.Entities[npc.QuestEntityName]
-            qent.Killed[attacker] = true
-        end
-    end
-
-    hook.Add("KeyPress",Tag,OnKeyPress)
-    hook.Add("EntityRemoved",Tag,OnEntityRemoved)
-    hook.Add("OnNPCKilled",Tag,OnNPCKilled)
+    end)
 
     --[[
     Sets the passed quest as active quest
@@ -408,183 +347,14 @@ if SERVER then
     ]]--
     Quest.SetActiveQuest = function(quest)
         for _,ent in pairs(Quest.ActiveQuest.Entities) do
-            if IsValid(ent) then
-                ent.IsQuestEntity = false
-                ent:Remove()
+            if ent:IsSpawned() then
+                ent.Instance.IsQuestEntity = false
+                ent.Instance:Remove()
             end
         end
         Quest.ActiveQuest = quest
-        for _,ent in pairs(quest.Entities) do
-            Quest.SpawnEntity(ent)
-        end
-    end
-
-    --[[
-    Creates a task table and assign it to the quest specified
-        quest: The quest to assign this task to
-        printname: The name of the task to be displayed in UIs
-        description: The description of the task to be displayed in UIs
-        onrun: A function of signature "bool function(Player ply)"
-            where bool indicates wether or not the task has been completed by the player
-        onstart: A function of signature "void function(ply)" that will be run on start of the task
-        onfinish: A function of signature "void function(ply)" that will be run on end of the task
-    Returns a new task table corresponding to arguments passed
-    ]]--
-    Quest.AddTask = function(quest,printname,description,onrun,onstart,onfinish)
-        local task = {
-            Started = {},
-            Quest = quest.Name,
-            Name = printname,
-            Description = description,
-            OnStart = onstart,
-            OnFinish = onfinish,
-            OnRun = onrun,
-            IsFaulted = false,
-        }
-
-        --Here we make the core function that will be called by this task safe from developer mistakes
-        task.Execute = function(ply)
-            if task.IsFaulted then return true end
-
-            if not task.Started[ply:SteamID()] then
-                local s,e = task.OnStart and pcall(task.OnStart,ply) or true,nil
-                if not s then
-                    task.IsFaulted = true
-                    Quest.Print("Task[" .. task.Name .. "] OnStart method generated error:\n" ..
-                        e .. "\n /!\\ This task is now faulted and wont be ran anymore /!\\")
-                    return true
-                end
-                task.Started[ply:SteamID()] = true
-            end
-
-            local s,ret = pcall(task.OnRun,ply)
-            if not s then
-                task.IsFaulted = true
-                Quest.Print("Task[" .. task.Name .. "] OnRun method generated error:\n" ..
-                    ret .. "\n /!\\ This task is now faulted and wont be ran anymore /!\\")
-                return true
-            else
-                ret = ret ~= nil and ret or false
-                if ret then
-                    local s,e = task.OnFinish and pcall(task.OnFinish,ply) or true,nil
-                    if not s then
-                        task.IsFaulted = true
-                        Quest.Print("Task[" .. task.Name .. "] OnFinish method generated error:\n" ..
-                            e .. "\n /!\\ This task is now faulted and wont be ran anymore /!\\")
-                        return true
-                    else
-                        return ret
-                    end
-                else
-                    return false
-                end
-            end
-        end
-
-        table.insert(quest.Tasks,task)
-
-        return task
-    end
-
-    --[[
-    A wrapper around Quest.AddTask that adds a task to the specified quest,
-    the player should reach the specified pos to complete the task
-        quest: The quest to assign this task to
-        locname: The location name that will be used in UIs
-        locpos: The position to be reached to complete the task
-        onstart: A function of signature "void function(ply)" that will be run on start of the task
-        onfinish: A function of signature "void function(ply)" that will be run on end of the task
-    Returns a new task table
-    ]]--
-    Quest.AddLocationTask = function(quest,locname,locpos,onstart,onfinish)
-        local t = Quest.AddTask(quest,"Reach " .. locname,"Go and find the place called \"" .. locname .. "\"!",
-        function(ply)
-            return ply:GetPos():Distance(locpos) < 150
-        end,onstart,onfinish)
-
-        return t
-    end
-
-    --[[
-    A wrapper around Quest.AddTask that adds a task to the specified quest,
-    the player should talk to a specified entity to complete the task
-        quest: The quest to assign this task to
-        entprintname: The entity name that will be used in UIs
-        entname: The entity name that was used to add the entity to the quest
-        ent: The entity to talk to complete the task
-        onstart: A function of signature "void function(ply)" that will be run on start of the task
-        onfinish: A function of signature "void function(ply)" that will be run on end of the task
-    Returns a new task table
-    ]]--
-    Quest.AddUseTask = function(quest,entprintname,entname,onstart,onfinish)
-        local t = Quest.AddTask(quest,entprintname,"Interact with " .. entprintname,
-        function(ply)
-            return quest.Entities[entname].Interacted[ply]
-        end,onstart,onfinish)
-
-        return t
-    end
-
-    --[[
-    A wrapper around Quest.AddTask that adds a task to the specified quest,
-    the player should kill a specified entity to complete the task
-        quest: The quest to assign this task to
-        entprintname: The entity name that will be used in UIs
-        entname: The entity name that was used to add the entity to the quest
-        ent: The entity to kill complete the task
-        onstart: A function of signature "void function(ply)" that will be run on start of the task
-        onfinish: A function of signature "void function(ply)" that will be run on end of the task
-    Returns a new task table
-    ]]--
-    Quest.AddKillTask = function(quest,entprintname,entname,onstart,onfinish)
-        local t = Quest.AddTask(quest,entprintname,"Get rid of " .. entprintname,
-        function(ply)
-            return quest.Entities[entname].Killed[ply]
-        end,onstart,onfinish)
-
-        return t
-    end
-
-    --[[
-    Adds a player to a quest
-        quest: The quest table to add the player to
-        ply: The player to add
-    Returns void
-    ]]--
-    Quest.AddPlayer = function(quest,ply)
-        if quest.Blacklist[ply:SteamID()] then return end
-        if not quest.Players[ply] then
-            quest.Players[ply] = 1
-            local s,e = quest.OnStart and pcall(quest.OnStart,ply) or true,nil
-            if not s then
-                Quest.Print("Quest[" .. quest.PrintName .. "] OnStart method generated error:\n" ..
-                    e .. "\n /!\\ This method is now faulted and wont be ran anymore /!\\")
-                quest.OnStart = function() end --No more errors here
-            end
-        end
-    end
-
-    --[[
-    Removes a player from a quest
-        quest: The quest table to add the player to
-        ply: The player to add
-    Returns void
-    ]]--
-    Quest.RemovePlayer = function(quest,ply)
-        if quest.Players[ply] then
-            quest.Players[ply] = nil
-        end
-    end
-
-    --[[
-    Blacklists a player from a quest
-        quest: The quest to blacklist the player from
-        ply: The player to blacklist
-    Returns void
-    ]]--
-    Quest.Blacklist = function(quest,ply)
-        if not quest.Blacklist[ply:SteamID()] then
-            quest.Blacklist[ply:SteamID()] = true
+        for _,ent in pairs(Quest.ActiveQuest.Entities) do
+            Quest.ActiveQuest:SpawnEntity(ent)
         end
     end
 
@@ -595,7 +365,7 @@ if SERVER then
     ]]--
     local OnDisconnect = function(ply)
         if Quest.ActiveQuest.Players[ply] then
-            Quest.ActiveQuest.Players[ply] = nil
+            Quest.ActiveQuest:RemovePlayer(ply)
         end
     end
 
@@ -607,7 +377,7 @@ if SERVER then
         local active = Quest.ActiveQuest
         for ply,state in pairs(active.Players) do
             if ply:IsValid() and #active.Tasks > 0 then
-                local finished = active.Tasks[state].Execute(ply)
+                local finished = active.Tasks[state]:Execute(ply)
                 if finished then
                     local nextstate = state + 1
                     active.Players[ply] = nextstate
@@ -635,9 +405,15 @@ if SERVER then
     ]]--
     local OnInitPostEntity = function()
         local spanwpoint = Vector (-14415.375976562, 457.50762939453, 13363.03125)
+        local angles = Angles(0,-90,0)
+        if game.GetMap():match("gm_construct_m3") then
+            spawnpoint = Vector (-11718.286132812,-1171.1378173828,13708.03125)
+            angles = Angle(0,15,0)
+        end
+
         local ent = ents.Create("lua_npc_quest")
         ent:SetPos(spanwpoint)
-        ent:SetAngles(Angle(0,-90,0))
+        ent:SetAngles(angles)
         ent:Spawn()
         --ent:StartActivity(ACT_IDLE)
     end
