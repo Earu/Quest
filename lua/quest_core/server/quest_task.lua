@@ -1,14 +1,6 @@
 if not SERVER then return end
 
 local task = {
-    Started = {},
-    Quest = "Undefined",
-    Name = "Undefined",
-    Description = "Undefined",
-    OnStart = function(ply) end,
-    OnFinish = function(ply) end,
-    OnRun = function(ply) return true end,
-    IsFaulted = false,
     Execute = function(task,ply)
         if task.IsFaulted then return true end
 
@@ -17,7 +9,7 @@ local task = {
             if not s then
                 task.IsFaulted = true
                 Quest.Print("Task[" .. task.Name .. "] OnStart method generated error:\n" ..
-                    e .. "\n /!\\ This task is now faulted and wont be ran anymore /!\\")
+                    e .. "\n /!\\ This task is now faulted and wont be ran anymore /!\\",true)
                 return true
             end
             task.Started[ply:SteamID()] = true
@@ -27,7 +19,7 @@ local task = {
         if not s then
             task.IsFaulted = true
             Quest.Print("Task[" .. task.Name .. "] OnRun method generated error:\n" ..
-                ret .. "\n /!\\ This task is now faulted and wont be ran anymore /!\\")
+                ret .. "\n /!\\ This task is now faulted and wont be ran anymore /!\\",true)
             return true
         else
             ret = ret ~= nil and ret or false
@@ -36,7 +28,7 @@ local task = {
                 if not s then
                     task.IsFaulted = true
                     Quest.Print("Task[" .. task.Name .. "] OnFinish method generated error:\n" ..
-                        e .. "\n /!\\ This task is now faulted and wont be ran anymore /!\\")
+                        e .. "\n /!\\ This task is now faulted and wont be ran anymore /!\\",true)
                     return true
                 else
                     return ret
@@ -46,17 +38,19 @@ local task = {
             end
         end
     end
-
 }
 
-return function(quest,printname,description,onrun,onstart,onfinish)
-    local obj       = setmetatable({},{ __index = task })
-    obj.Quest       = quest.Name or obj.Quest
-    obj.Name        = printname or obj.Name
-    obj.Description = description or obj.Description
-    obj.OnStart     = onstart or obj.OnStart
-    obj.OnFinish    = onfinish or obj.OnFinish
-    obj.OnRun       = onrun or obj.OnRun
+task.__index = task
 
-    return obj
+return function(quest,printname,description,onrun,onstart,onfinish)
+    return setmetatable({
+        Started = {},
+        Quest = quest.Name or "Undefined",
+        Name = printname or "Undefined",
+        Description = description or "Undefined",
+        OnStart = onstart or function(ply) end,
+        OnFinish = onfinish or function(ply) end,
+        OnRun = onrun or function(ply) return true end,
+        IsFaulted = false,
+    },task)
 end

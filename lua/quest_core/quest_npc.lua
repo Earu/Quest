@@ -29,10 +29,11 @@ ENT.Initialize = function(self)
 end
 
 ENT.GetGender = function(self)
-	self.__gender = self.__gender or (self:GetModel():lower():find("female",1,true)
-		or self:GetModel():lower():find("alyx",1,true))
-		and "female" or "male"
-	return self.__gender
+	self.Gender = self.Gender or (self:GetModel():lower():find("female",1,true)
+		or self:GetModel():lower():find("alyx",1,true)
+		and "female" or "male")
+
+	return self.Gender
 end
 
 if SERVER then
@@ -67,27 +68,56 @@ if SERVER then
 
 	end
 
-	ENT.PlaySound = function(self,sndtype,a,b,c)
+	ENT.PlaySound = function(self,s,a,b,c)
 		local now = RealTime()
-		if (self.nexttalk or 0)>now then return false end
+		if (self.NextTalk or 0) > now then return false end
 
-		local sound = sndtype
+		self:EmitSound(s,100,math.random(96,104))
 
-		self:EmitSound(sound,100,math.random(96,104))
-
-		local dur = SoundDuration(sound)
+		local dur = SoundDuration(s)
 		dur = dur and dur > 0 and dur or 0.3
 
-		self.nexttalk = now + dur + 0.3
+		self.NextTalk = now + dur + 0.3
 		return true
 	end
 
 	ENT.StopThat = function(self)
-		local female = self:GetGender()=="female"
-		if( female ) then
-			self:PlaySound("vo/trainyard/female01/cit_hit0"..math.random(1, 3)..".wav")
-			else
-			self:PlaySound("vo/trainyard/male01/cit_hit0"..math.random(1, 3)..".wav")
+		local gender = self:GetGender()
+		self:PlaySound("vo/trainyard/" .. gender .. "01/cit_hit0"..math.random(1, 3)..".wav")
+	end
+
+	local snds = {
+		"/behindyou01.wav",
+		"/behindyou02.wav",
+		"/overhere01.wav",
+	}
+
+	ENT.OverHere = function(self)
+		local gender = self:GetGender()
+		local i = math.random(1,#snds)
+		self:PlaySound("vo/npc/" .. gender .. "01/" .. snds[i])
+	end
+
+	ENT.Pssst = function(self)
+		self:PlaySound("vo/trainyard/cit_hall_psst.wav")
+	end
+
+	ENT.Think = function(self)
+		if not self.CanBeckon then return end
+		for k,v in pairs(ents.FindInSphere(self:GetPos(),200)) do
+			if v:IsPlayer() then
+				if math.random(0,1) == 1 then
+					self:Pssst()
+				else
+					self:OverHere()
+				end
+				self.CanBeckon = false
+				timer.Simple(math.random(7,30),function()
+					if self:IsValid() then
+						self.CanBeckon = true
+					end
+				end)
+			end
 		end
 	end
 
@@ -133,7 +163,9 @@ if SERVER then
 					e:Fire("Dissolve",ent:GetName(),0)
 					SafeRemoveEntityDelayed(e,0.1)
 					if self:IsValid() then
-						if MetAchievements and MetaWorks.FireEvent then MetaWorks.FireEvent("ms_npcdissolve", v, self, weapon) end
+						if MetAchievements and MetaWorks.FireEvent then
+							MetaWorks.FireEvent("ms_npcdissolve", v, self, weapon)
+						end
 					end
 				end
 			end

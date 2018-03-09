@@ -7,9 +7,9 @@ This loads every quest script in "quest_core/quests/"
 Returns void
 ]]--
 Quest.Load = include("quest_core/loader.lua")
-Quest.Print = function(txt)
-    local prefix = "[Quest] >> "
-    MsgC(Color(0,100,200),prefix .. txt)
+Quest.Print = function(txt,isbad)
+    local col = isbad and Color(200,100,0) or Color(0,100,200)
+    MsgC(Color(255,255,255),"[",col,"Quest",Color(255,255,255)," >> " .. txt)
 end
 
 if CLIENT then
@@ -245,7 +245,7 @@ if CLIENT then
                 Quest.CurrentDialog.Display = false
                 local s,e = Quest.CurrentDialog and pcall(Quest.CurrentDialog.OnFinish) or true,nil
                 if not s then
-                    Quest.Print("The current dialog OnFinish method generated an error:\n" .. e)
+                    Quest.Print("The current dialog OnFinish method generated an error:\n" .. e,true)
                 end
             else
                 Quest.CurrentDialog.CurrentChar = Quest.CurrentDialog.CurrentChar + 1
@@ -335,7 +335,7 @@ if SERVER then
         local s,e = pcall(receivers[i],ply)
         if not s then
             Quest.Print("Dialog[" .. i .."] OnFinish method generated error:\n" ..
-                e .. "\n /!\\ This method is now faulted and wont be ran anymore /!\\")
+                e .. "\n /!\\ This method is now faulted and wont be ran anymore /!\\",true)
             receivers[i] = function() end
         end
     end)
@@ -384,13 +384,13 @@ if SERVER then
                     if nextstate > #active.Tasks then
                         local s,e = active.OnFinish and pcall(active.OnFinish,ply) or true,nil
                         if s then
-                            Quest.RemovePlayer(active,ply)
-                            Quest.Blacklist(active,ply)
+                            active:RemovePlayer(active,ply)
+                            Quest:SetBlacklist(active,ply)
                             local name = _G.UndecorateNick and (_G.UndecorateNick(ply:Nick())) or ply:Nick()
                             Quest.Print(name .. "[" .. ply:SteamID() .. "] completed quest <" .. active.PrintName .. ">")
                         else
                             Quest.Print("Quest[" .. active.PrintName .. "] OnFinish method generated error:\n" ..
-                                e .. "\n /!\\ This method is now faulted and wont be ran anymore /!\\")
+                                e .. "\n /!\\ This method is now faulted and wont be ran anymore /!\\",true)
                             active.OnFinish = function() end -- Remove the function so it doesnt spam errors
                         end
                     end
@@ -405,7 +405,7 @@ if SERVER then
     ]]--
     local OnInitPostEntity = function()
         local spanwpoint = Vector (-14415.375976562, 457.50762939453, 13363.03125)
-        local angles = Angles(0,-90,0)
+        local angles = Angle(0,-90,0)
         if game.GetMap():match("gm_construct_m3") then
             spawnpoint = Vector (-11718.286132812,-1171.1378173828,13708.03125)
             angles = Angle(0,15,0)

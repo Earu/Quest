@@ -250,7 +250,7 @@ if SERVER then
 
 	net.Receive("QuestAddPlayer",function(_,ply)
 		if Quest then
-			Quest.AddPlayer(Quest.ActiveQuest,ply)
+			Quest.ActiveQuest:AddPlayer(ply)
 		end
 	end)
 end

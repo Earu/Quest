@@ -4,16 +4,6 @@ local taskctor = include("quest_core/server/quest_task.lua")
 local entctor = include("quest_core/server/quest_entity.lua")
 
 local quest = {
-    Name = "Undefined",
-    PrintName = "Undefined",
-    Description = "Undefined",
-    OnStart = function(ply) end,
-    OnFinish = function(ply) end,
-    Tasks = {},
-    Entities = {},
-    Players = {},
-    Blacklist = {},
-
     --[[
     Adds a player to a quest
         quest: The quest table to add the player to
@@ -27,7 +17,7 @@ local quest = {
             local s,e = quest.OnStart and pcall(quest.OnStart,ply) or true,nil
             if not s then
                 Quest.Print("Quest[" .. quest.PrintName .. "] OnStart method generated error:\n" ..
-                    e .. "\n /!\\ This method is now faulted and wont be ran anymore /!\\")
+                    e .. "\n /!\\ This method is now faulted and wont be ran anymore /!\\",true)
                 quest.OnFinish = function() end --No more errors here
             end
         end
@@ -51,7 +41,7 @@ local quest = {
         ply: The player to blacklist
     Returns void
     ]]--
-    Blacklist = function(quest,ply)
+    SetBlacklist = function(quest,ply)
         if not quest.Blacklist[ply:SteamID()] then
             quest.Blacklist[ply:SteamID()] = true
         end
@@ -166,13 +156,18 @@ local quest = {
     end,
 }
 
-return function(name,printname,description,onstart,onfinish)
-    local obj       = setmetatable({},{ __index = quest })
-    obj.Name        = name or obj.Name
-    obj.PrintName   = printname or obj.PrintName
-    obj.Description = description or obj.Description
-    obj.OnStart     = onstart or obj.OnStart
-    obj.OnFinish    = onfinish or obj.OnFinish
+quest.__index = quest
 
-    return obj
+return function(name,printname,description,onstart,onfinish)
+    return setmetatable({
+        Name = name or "Undefined",
+        PrintName = printname or "Undefined",
+        Description = description or "Undefined",
+        OnStart = onstart or function(ply) end,
+        OnFinish = onfinish or function(ply) end,
+        Tasks = {},
+        Entities = {},
+        Players = {},
+        Blacklist = {},
+    },quest)
 end

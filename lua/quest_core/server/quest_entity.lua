@@ -1,15 +1,7 @@
 if not SERVER then end
+local Tag = "Quest"
 
 local entity = {
-    Name = "Undefined",
-    Class = "prop_physics",
-    Model = "",
-    OnUse = function(ply) end,
-    IsNPC = false,
-    SpawnPosition = Vector(0,0,0),
-    Instance = NULL,
-    Interacted = {},
-    Killed = {},
     IsSpawned = function(ent)
         return ent.Instance:IsValid()
     end,
@@ -30,6 +22,8 @@ local entity = {
         return inst
     end,
 }
+
+entity.__index = entity
 
 --[[
 Called on KeyPress hook
@@ -56,7 +50,7 @@ local OnKeyPress = function(ply,key)
                 local s,e = pcall(qent.OnUse,ply)
                 if not s then
                     Quest.Print("Entity[" .. qent.Name .. "] OnUse method generated error:\n" ..
-                        e .. "\n /!\\ This method is now faulted and wont be ran anymore /!\\")
+                        e .. "\n /!\\ This method is now faulted and wont be ran anymore /!\\",true)
                     qent.OnUse = function() end
                 end
                 qent.Interacted[ply] = true
@@ -104,13 +98,15 @@ hook.Add("EntityRemoved",Tag,OnEntityRemoved)
 hook.Add("OnNPCKilled",Tag,OnNPCKilled)
 
 return function(quest,name,class,model,isnpc,spawnpoint,onuse)
-    local obj = setmetatable({},{ __index = entity })
-    obj.Name = name or obj.Name
-    obj.Class = class or obj.Class
-    obj.Model = model or obj.Model
-    obj.IsNPC = isnpc or obj.IsNPC
-    obj.SpawnPosition = spawnpoint or obj.SpawnPosition
-    obj.OnUse = onuse or obj.OnUse
-
-    return obj
+    return setmetatable({
+        Name = name or "Undefined",
+        Class = class or "prop_physics",
+        Model = model or "",
+        OnUse = onuse or function(ply) end,
+        IsNPC = isnpc or false,
+        SpawnPosition = spawnpoint or Vector(0,0,0),
+        Instance = NULL,
+        Interacted = {},
+        Killed = {},
+    },entity)
 end
