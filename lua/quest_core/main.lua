@@ -376,16 +376,18 @@ if SERVER then
     local OnThink = function()
         local active = Quest.ActiveQuest
         for ply,state in pairs(active.Players) do
-            if ply:IsValid() and #active.Tasks > 0 then
-                local finished = active.Tasks[state]:Execute(ply)
+            if ply:IsValid() then
+                print(state)
+                local finished = #active.Tasks > 0 and active.Tasks[state]:Execute(ply)
+                finished = finished == nil and true or finished
                 if finished then
                     local nextstate = state + 1
                     active.Players[ply] = nextstate
                     if nextstate > #active.Tasks then
                         local s,e = active.OnFinish and pcall(active.OnFinish,ply) or true,nil
                         if s then
-                            active:RemovePlayer(active,ply)
-                            Quest:SetBlacklist(active,ply)
+                            active:RemovePlayer(ply)
+                            active:SetBlacklist(ply)
                             local name = _G.UndecorateNick and (_G.UndecorateNick(ply:Nick())) or ply:Nick()
                             Quest.Print(name .. "[" .. ply:SteamID() .. "] completed quest <" .. active.PrintName .. ">")
                         else
