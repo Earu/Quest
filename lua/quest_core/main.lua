@@ -9,7 +9,7 @@ Returns void
 Quest.Load = include("quest_core/loader.lua")
 Quest.Print = function(txt,isbad)
     local col = isbad and Color(200,100,0) or Color(0,100,200)
-    MsgC(Color(255,255,255),"[",col,"Quest",Color(255,255,255)," >> " .. txt)
+    MsgC(Color(255,255,255),"[",col,"Quest",Color(255,255,255),"] >> " .. txt)
 end
 
 if CLIENT then
@@ -272,7 +272,7 @@ if CLIENT then
     end
 
     hook.Add("KeyRelease",Tag,OnKeyRelease)
-    hook.Add("HUDPaint",Tag,OnPaint)
+    hook.Add("PostDrawHUD",Tag,OnPaint)
     hook.Add("HUDShouldDraw",Tag,OnShouldDraw)
 end
 
@@ -377,7 +377,6 @@ if SERVER then
         local active = Quest.ActiveQuest
         for ply,state in pairs(active.Players) do
             if ply:IsValid() then
-                print(state)
                 local finished = #active.Tasks > 0 and active.Tasks[state]:Execute(ply)
                 finished = finished == nil and true or finished
                 if finished then

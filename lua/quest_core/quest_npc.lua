@@ -86,16 +86,9 @@ if SERVER then
 		self:PlaySound("vo/trainyard/" .. gender .. "01/cit_hit0"..math.random(1, 3)..".wav")
 	end
 
-	local snds = {
-		"/behindyou01.wav",
-		"/behindyou02.wav",
-		"/overhere01.wav",
-	}
-
 	ENT.OverHere = function(self)
 		local gender = self:GetGender()
-		local i = math.random(1,#snds)
-		self:PlaySound("vo/npc/" .. gender .. "01/" .. snds[i])
+		self:PlaySound("vo/npc/" .. gender .. "01/overhere01.wav")
 	end
 
 	ENT.Pssst = function(self)
@@ -103,6 +96,7 @@ if SERVER then
 	end
 
 	ENT.Think = function(self)
+		self.CanBeckon = self.CanBeckon == nil and true or self.CanBeckon
 		if not self.CanBeckon then return end
 		for k,v in pairs(ents.FindInSphere(self:GetPos(),200)) do
 			if v:IsPlayer() then
@@ -112,7 +106,7 @@ if SERVER then
 					self:OverHere()
 				end
 				self.CanBeckon = false
-				timer.Simple(math.random(7,30),function()
+				timer.Simple(30,function()
 					if self:IsValid() then
 						self.CanBeckon = true
 					end
